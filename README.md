@@ -5,7 +5,7 @@ It leverages multiple annotators’ demographic features (age, ethnicity, educat
 
 ---
 
-## 🧩 Project Structure
+## Project Structure
 ```
 PAIR-AWAN/
 │
@@ -23,7 +23,7 @@ PAIR-AWAN/
 
 ---
 
-## ⚙️ Setup
+## Setup
 
 1. Clone the repository:
    ```bash
@@ -41,7 +41,7 @@ PAIR-AWAN/
 
 ---
 
-## 🚀 Training
+##  Training
 
 Run the model:
 ```bash
@@ -52,25 +52,6 @@ The script:
 - Loads annotated hate-speech data with demographic metadata
 - Trains AWAN models across demographic feature pairs
 - Evaluates using macro-F1, Precision, Recall, and soft-label metrics (Average MD, Error Rate)
-- Saves outputs under `results/`
-
----
-
-## 📊 Outputs
-- **Per-seed results** in: `results/awan_hate_summary_*.csv`
-- **Detailed predictions** per seed: `results/awan_hate_preds_seed*.tsv` (if enabled)
-
----
-
-## 🧠 Citation
-If you use this code or dataset structure, please cite:
-
-> Tahaei, N. (2025). *Demographic Features for Annotation-Aware Classification.*  
-
----
-
-## 🧰 Requirements
-See `requirements.txt` for package versions.
 
 ---
 
