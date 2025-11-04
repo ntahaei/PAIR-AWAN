@@ -1,4 +1,6 @@
 import numpy as np
+# These implementations of the soft-label and perspectivist metrics 
+# are adapted from the LeWiDi Shared Task (https://le-wi-di.github.io/).
 
 def average_MD(targets, predictions):
     distances = []
