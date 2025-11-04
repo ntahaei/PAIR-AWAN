@@ -1,7 +1,7 @@
 # Beyond Consensus: Use of Demographics for Datasets that Reflect Annotator Disagreement
 
 This repository implements a **demographic-aware Annotation-Wise Attention Network (AWAN)** for hate speech detection.  
-It leverages multiple annotators’ demographic features (age, ethnicity, education, political party) to train per-annotator classifiers and analyze variation in label behavior.
+It leverages multiple annotations’ demographic features (age, ethnicity, education, political party) to train per-avatar classifiers and analyze variation in label behavior.
 
 ---
 
