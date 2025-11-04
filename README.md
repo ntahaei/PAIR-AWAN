@@ -52,8 +52,3 @@ The script:
 - Loads annotated hate-speech data with demographic metadata
 - Trains AWAN models across demographic feature pairs
 - Evaluates using macro-F1, Precision, Recall, and soft-label metrics (Average MD, Error Rate)
-
----
-
-## 📎 License
-This project is provided for academic and research use under the MIT License.
