@@ -49,17 +49,41 @@ def evaluate_detailed(model, loader):
     with torch.no_grad():
         for batch in loader:
             input_ids = batch["input_ids"].unsqueeze(0).to(device)
-            annots = batch['annotators_info']
-            demo = [[a["age"], a["ethnicity"]] for a in annots]
-            labels = [a["label"] for a in annots]
-            all_true.extend(labels)
+            annotators = batch['annotators_info']
+            sample_id = batch['tweet_id']
 
-            preds = [random.choice([0, 1]) for _ in labels]
-            all_pred.extend(preds)
+            demographics = [[a["age"], a["ethnicity"], a["education"], a["party"]] for a in annotators]
+            labels = [a["label"] for a in annotators]
 
-            p1, t1 = sum(preds) / len(preds), sum(labels) / len(labels)
-            soft_pred[batch["tweet_id"]] = [1 - p1, p1]
-            soft_true[batch["tweet_id"]] = [1 - t1, t1]
+            demog_label = {tuple(demo): label for demo, label in zip(demographics, labels)}
+            annotator_ids = [a["annotator_idx"] for a in annotators]
+
+            avatars = np.array([list(row[:2]) + [demog_label.get(tuple(row[:2]), 2)] for row in all_features],dtype=float)
+            avatar_valid_indices = np.where(avatars[:, 2] != 2)[0].tolist()
+
+            demog_to_valid_avatars = {tuple(avatars[i, :2]): i for i in avatar_valid_indices}
+            annotator_to_valid_idx = {a["annotator_idx"]: demog_to_valid_avatars.get((a["age"], a["ethnicity"], a["education"], a["party"]))for a in annotators}
+            avatar_tensor = torch.tensor(avatars[:, :2], dtype=torch.float, device=device)
+            logits = model(input_ids, avatar_tensor, avatar_valid_indices)
+            preds = torch.sigmoid(logits).cpu().detach().numpy()
+            annotator_to_prediction = {ann_idx: preds[avatar_valid_indices.index(valid_idx)] for ann_idx, valid_idx in annotator_to_valid_idx.items() if valid_idx is not None}
+
+            y_true, y_pred = [], []
+            for a in annotators:
+                ann_id = a["annotator_idx"]
+                if ann_id in annotator_to_prediction:
+                    y_true.append(float(a["label"]))
+                    y_pred.append(float(annotator_to_prediction[ann_id] >= 0.5))
+            if not y_true:
+                continue
+
+            p1 = sum(y_pred) / len(y_pred)
+            t1 = sum(y_true) / len(y_true)
+            soft_pred[sample_id] = [1 - p1, p1]
+            soft_true[sample_id] = [1 - t1, t1]
+
+            all_true_flat.extend(y_true)
+            all_pred_flat.extend(y_pred)
 
     return (
         f1_score(all_true, all_pred, average="macro"),
@@ -93,30 +117,46 @@ for demo_cols in demographic_sets:
         for epoch in range(n_epochs):
             model.train()
             total_loss = 0
+            # Each batch corresponds to one tweet (with multiple annotator labels)
             for batch in train_loader:
                 optimizer.zero_grad()
                 input_ids = batch["input_ids"].unsqueeze(0).to(device)
-                annots = batch['annotators_info']
-                demos = [[a["age"], a["ethnicity"]] for a in annots]
-                labels = torch.tensor([a["label"] for a in annots], dtype=torch.float32).to(device)
-                demo_label = {tuple(d): l for d, l in zip(demos, labels)}
+                annotators = batch['annotators_info']
+                demographics = [[a["age"], a["ethnicity"]] for a in annotators]
+                labels = [a["label"] for a in annotators]
+                
+                # Map demographic tuple -> label for valid avatars
+                demog_label = {tuple(demo): label for demo, label in zip(demographics, labels)}
+                
+                annotator_ids = [a["annotator_idx"] for a in annotators]
+                input_text = tokenizer.decode(input_ids[0].cpu().numpy(), skip_special_tokens=True)
+                
+                # Create demographic “avatars” (all possible demographic combinations).  2 = no annotation for that avatar
+                avatars = np.array([list(row[:2]) + [demog_label.get(tuple(row[:2]), 2)] for row in all_features], dtype=float)
+                
+                # Select valid avatars (ones that have an actual label)
+                avatar_valid_indices = np.where(avatars[:, 2] != 2)[0].tolist()
+                
+                 # Map demographic -> valid index
+                demog_to_valid_avatars = {tuple(avatars[i, :2]): i for i in avatar_valid_indices} 
 
-                avatars = np.array([list(r[:2]) + [demo_label.get(tuple(r[:2]), 2)] for r in all_features], dtype=float)
-                valid_idx = np.where(avatars[:, 2] != 2)[0].tolist()
+                # Match each annotator’s prediction to its corresponding demographic index
+                annotator_to_valid_idx = {a["annotator_idx"]: demog_to_valid_avatars.get((a["age"], a["ethnicity"])) for a in annotators}
+                
                 avatar_tensor = torch.tensor(avatars[:, :2], dtype=torch.float).to(device)
-
-                preds = model(input_ids, avatar_tensor, valid_idx)
-                pred_map = [preds[valid_idx.index(i)] for i in valid_idx]
-                if not pred_map:
-                    continue
-
-                pred_tensor = torch.stack(pred_map).view(-1)
-                loss = loss_fn(pred_tensor, labels)
+                labels = torch.tensor(labels, dtype=torch.float32).to(device)
+                preds = model(input_ids, avatar_tensor, avatar_valid_indices)
+                annotator_to_prediction = {ann_idx: preds[avatar_valid_indices.index(valid_idx)] for ann_idx, valid_idx in annotator_to_valid_idx.items()}
+                
+                # Stack predictions for all annotators in this tweet
+                annotator_preds = torch.stack(list(annotator_to_prediction.values()))  # shape [#annotators, 1]
+                
+                loss = loss_function(annotator_preds.view(-1), labels)
                 loss.backward()
                 optimizer.step()
                 total_loss += loss.item()
-
-            print(f"Epoch {epoch + 1}: Loss={total_loss:.4f}", flush=True)
+                
+            print(f"Epoch {epoch + 1}, Loss: {total_loss:.4f}", flush=True)
             val_f1, val_p, val_r, val_md, val_err = evaluate_detailed(model, val_loader)
             print(f"Val F1={val_f1:.4f}, MD={val_md:.4f}, Error={val_err:.4f}", flush=True)
 
